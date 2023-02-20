@@ -1,0 +1,5 @@
+// Данный файл дублирует application.properties,
+// вставте необходимые сведения по приведенный форме в ваш application.properties
+
+bot.name =
+bot.token =
