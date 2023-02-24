@@ -21,7 +21,7 @@ public class SelectedCurrencyServiceImp implements SelectedCurrencyService {
 
     @Override
     public Currency getToCurrency(long chatId) {
-        return toCurrency.getOrDefault(chatId, Currency.USD);
+        return toCurrency.getOrDefault(chatId, Currency.BYN);
     }
 
     @Override

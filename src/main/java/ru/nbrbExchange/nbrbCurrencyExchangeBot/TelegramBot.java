@@ -1,4 +1,4 @@
-package ru.nbrbExchange.nbrbCurrencyExchangeBot.service;
+package ru.nbrbExchange.nbrbCurrencyExchangeBot;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -18,6 +18,8 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.Keyboard
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.nbrbExchange.nbrbCurrencyExchangeBot.config.BotConfig;
 import ru.nbrbExchange.nbrbCurrencyExchangeBot.entity.Currency;
+import ru.nbrbExchange.nbrbCurrencyExchangeBot.service.CurrencyConversionService;
+import ru.nbrbExchange.nbrbCurrencyExchangeBot.service.SelectedCurrencyService;
 
 
 import java.util.ArrayList;
@@ -27,31 +29,28 @@ import java.util.Optional;
 
 @Component
 public class TelegramBot extends TelegramLongPollingBot {
-
-
+    final BotConfig botConfig;
     private final SelectedCurrencyService selectedCurrencyService = SelectedCurrencyService.getInstance();
 
     private final CurrencyConversionService currencyConversionService = CurrencyConversionService.getInstance();
 
-
+    private final String HELLO_MESSAGE = " напиши команду /help для получения информации о Боте";
     private final String HELP_MESSAGE = ", данный бот предназначен для того, " +
-            "чтобы сконверитровать из одной валюты в другую по курсу НБРБ.\n" +
+            "чтобы сконверитровать одну валюту в другую по курсу НБРБ.\n" +
             "Для получения требуемой информации, выбери из левого столбца ту валюту, " +
             "из которой хочешь конвертировать, а в правом столбце выбери ту валюту, " +
             "в которую хочешь конвертировать введенную сумму.\n\n" +
             "Сумму, которую хочешь конвертировать нужно написать в чат боту, после чего он произведет конвертацию.\n\n" +
             "Чтобы установить необходимые валюты используй комманду \n/make_exchange \n" +
-            "или воспользуйся меню возле клавиатуры"; // TODO
+            "или воспользуйся меню возле клавиатуры";  // TODO
 
-    @Autowired
-    final BotConfig botConfig;
 
     public TelegramBot(BotConfig botConfig) {
         this.botConfig = botConfig;
         List<BotCommand>  listOfCommands = new ArrayList<>();
-        listOfCommands.add(new BotCommand("/start", "начинает взаимодействие с ботом"));
-        listOfCommands.add(new BotCommand("/help", "данная команда вызывает подстазку по фуркционалу бота"));
-        listOfCommands.add(new BotCommand("/make_exchange", "выбери валюты, чтобы узнать курс НБРБ"));
+        listOfCommands.add(new BotCommand("/start", "запускает бота"));
+        listOfCommands.add(new BotCommand("/help", "выводит подсказку"));
+        listOfCommands.add(new BotCommand("/make_exchange", "выбор валюты"));
 
         try {
             this.execute(new SetMyCommands(listOfCommands, new BotCommandScopeDefault(), null));
@@ -70,7 +69,6 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
-
     private void handleMessage(Message message) {
         if (message.hasText() && message.hasEntities()) {
             String messageText = message.getText();
@@ -80,13 +78,13 @@ public class TelegramBot extends TelegramLongPollingBot {
 
             switch (messageText) {
                 case "/start":
-                    startCommandRecived(chatId, userName);
+                    sendMessage(chatId, "Привет " + userName + HELLO_MESSAGE);
                     break;
                 case "/help":
                     sendMessage(chatId, userName + HELP_MESSAGE);
                     break;
                 case "/make_exchange":
-                    makeExchange(chatId);
+                    makeExchange(message);
                     break;
                 default:
                     sendMessage(chatId, "Sorry, unsupported command");
@@ -98,11 +96,10 @@ public class TelegramBot extends TelegramLongPollingBot {
             String messageText = message.getText();
             Optional<Double> value = parseDouble(messageText);
 
-            Currency fromCurrency = selectedCurrencyService.getFromCurrency(message.getChatId());
-            Currency toCurrency = selectedCurrencyService.getToCurrency(message.getChatId());
-            double ratio = currencyConversionService.getConversionRatio(fromCurrency, toCurrency);
-
             if(value.isPresent()){
+                Currency fromCurrency = selectedCurrencyService.getFromCurrency(message.getChatId());
+                Currency toCurrency = selectedCurrencyService.getToCurrency(message.getChatId());
+                double ratio = currencyConversionService.getConversionRatio(fromCurrency, toCurrency);
 
                 String messageToSend = String.format("%4.2f %s конвертируется в %4.2f %s",
                         value.get(), fromCurrency, (value.get() * ratio), toCurrency);
@@ -113,8 +110,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private Optional<Double> parseDouble(String message) {
         try{
-            Optional<Double> parsedDouble = Optional.of(Double.parseDouble(message));
-            return parsedDouble;
+            return Optional.of(Double.parseDouble(message.replace(',', '.')));
         } catch (Exception e) {
             return Optional.empty();
         }
@@ -135,8 +131,53 @@ public class TelegramBot extends TelegramLongPollingBot {
                 break;
         }
 
-        // TODO ЗАРЕФАКТОРИТЬ В ОТДЕЛЬНЫЙ МЕТОД
+        InlineKeyboardMarkup markup = setCurrencyButtons(message);
 
+        EditMessageReplyMarkup editedMarkup = new EditMessageReplyMarkup();
+        editedMarkup.setChatId(message.getChatId());
+        editedMarkup.setMessageId(message.getMessageId());
+        editedMarkup.setReplyMarkup(markup);
+
+        try {
+            execute(editedMarkup);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
+    private void makeExchange(Message message) {
+        InlineKeyboardMarkup markup = setCurrencyButtons(message);
+
+        // настраиваем само сообщение
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(message.getChatId());
+        sendMessage.setText("Из левого столбца выбери ту валюту, которую хочешь поменять, " +
+                "а из правого - на которую хочешь поменять (по курсу НБРБ)");
+        sendMessage.setReplyMarkup(markup);
+
+        try {
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
+    private void sendMessage(long chatId, String textToSend) {
+
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId);
+        message.setText(textToSend);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private InlineKeyboardMarkup setCurrencyButtons(Message message) {
         List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
 
         Currency fromCurrency = selectedCurrencyService.getFromCurrency(message.getChatId());
@@ -156,82 +197,10 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         markup.setKeyboard(buttons);
-
-        EditMessageReplyMarkup editedMarkup = new EditMessageReplyMarkup();
-        editedMarkup.setChatId(message.getChatId());
-        editedMarkup.setMessageId(message.getMessageId());
-        editedMarkup.setReplyMarkup(markup);
-
-        try {
-            execute(editedMarkup);
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
-        }
-
+        return markup;
     }
 
-    private void makeExchange(long chatId) {
-        // устанавливаем подстрочные кнопки на каждую валюту
-        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
-
-        Currency fromCurrency = selectedCurrencyService.getFromCurrency(chatId);
-        Currency toCurrency = selectedCurrencyService.getToCurrency(chatId);
-
-        for(Currency currency : Currency.values()) {
-            buttons.add(
-                    Arrays.asList(
-                            InlineKeyboardButton.builder()
-                                    .text(getCurrencyButton(fromCurrency, currency))
-                                    .callbackData("FROM:" + currency)
-                                    .build(),
-                            InlineKeyboardButton.builder()
-                                    .text(getCurrencyButton(toCurrency, currency))
-                                    .callbackData("TO:" + currency)
-                                    .build()));
-        }
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        markup.setKeyboard(buttons);
-
-        // настраиваем само сообщение
-        SendMessage message = new SendMessage();
-        message.setChatId(chatId);
-        message.setText("Из левого столбца выбери ту валюту, которую хочешь поменять, " +
-                "а из правого - на которую хочешь поменять (по курсу НБРБ)");
-        message.setReplyMarkup(markup);
-
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
-
-
-
-    private void startCommandRecived(long chatId, String name) {
-
-        String answer = "Привет " + name + " напиши команду /help для получения информации о Боте";
-
-        sendMessage(chatId, answer);
-    }
-
-    private void sendMessage(long chatId, String textToSend) {
-
-        SendMessage message = new SendMessage();
-        message.setChatId(chatId);
-        message.setText(textToSend);
-
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
-        }
-
-
-    }
-
-    public String getCurrencyButton(Currency savedCurrency, Currency currentCurrency) {
+    private String getCurrencyButton(Currency savedCurrency, Currency currentCurrency) {
         return savedCurrency == currentCurrency ? currentCurrency.name() + " \uD83D\uDC48" : currentCurrency.name();
     }
 
