@@ -1,6 +1,6 @@
 # Учебный проект - Телеграм бот, показывающий курсы валют по НБРБ
 
-Ссылка на бюота - https://t.me/nbrbCurrencyExchangeBot
+Ссылка на бота - https://t.me/nbrbCurrencyExchangeBot
 
 Доступные команды: 
 
