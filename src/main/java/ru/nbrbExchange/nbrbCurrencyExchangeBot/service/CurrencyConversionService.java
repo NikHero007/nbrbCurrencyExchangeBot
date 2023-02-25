@@ -10,4 +10,5 @@ public interface CurrencyConversionService {
     }
 
     double getConversionRatio(Currency from, Currency to);
+
 }

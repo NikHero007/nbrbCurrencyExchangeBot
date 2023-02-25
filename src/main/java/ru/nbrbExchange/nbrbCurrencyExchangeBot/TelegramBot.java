@@ -8,6 +8,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.MessageEntity;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault;
@@ -51,6 +52,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         listOfCommands.add(new BotCommand("/start", "запускает бота"));
         listOfCommands.add(new BotCommand("/help", "выводит подсказку"));
         listOfCommands.add(new BotCommand("/make_exchange", "выбор валюты"));
+        listOfCommands.add(new BotCommand("/current_rates", "сегодняшний курс"));
 
         try {
             this.execute(new SetMyCommands(listOfCommands, new BotCommandScopeDefault(), null));
@@ -70,11 +72,11 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void handleMessage(Message message) {
+        long chatId = message.getChatId();
+        String userName = message.getChat().getFirstName();
+
         if (message.hasText() && message.hasEntities()) {
             String messageText = message.getText();
-
-            long chatId = message.getChatId();
-            String userName = message.getChat().getFirstName();
 
             switch (messageText) {
                 case "/start":
@@ -86,13 +88,14 @@ public class TelegramBot extends TelegramLongPollingBot {
                 case "/make_exchange":
                     makeExchange(message);
                     break;
+                case "/current_rates":
+                    currentRates(message);
+                    break;
                 default:
-                    sendMessage(chatId, "Sorry, unsupported command");
+                    sendMessage(chatId, "Команда не поддерживается, список поддерживаемых команд находится в меню, справа от клавиатуры");
 
             }
-        }
-
-        if(message.hasText()) {
+        } else if(message.hasText()) {
             String messageText = message.getText();
             Optional<Double> value = parseDouble(messageText);
 
@@ -104,6 +107,8 @@ public class TelegramBot extends TelegramLongPollingBot {
                 String messageToSend = String.format("%4.2f %s конвертируется в %4.2f %s",
                         value.get(), fromCurrency, (value.get() * ratio), toCurrency);
                 sendMessage(message.getChatId(), messageToSend);
+            } else {
+                sendMessage(chatId, messageText + " - некоректно, введи только число, например (100)");
             }
         }
     }
@@ -149,7 +154,6 @@ public class TelegramBot extends TelegramLongPollingBot {
     private void makeExchange(Message message) {
         InlineKeyboardMarkup markup = setCurrencyButtons(message);
 
-        // настраиваем само сообщение
         SendMessage sendMessage = new SendMessage();
         sendMessage.setChatId(message.getChatId());
         sendMessage.setText("Из левого столбца выбери ту валюту, которую хочешь поменять, " +
@@ -161,7 +165,24 @@ public class TelegramBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             throw new RuntimeException(e);
         }
+    }
 
+    private void currentRates(Message message) {
+        String messageToSend = String.format("Сегодняшний курс, согласно НБРБ:\n" +
+                "%4.2f %s ➖ %4.2f %s\n %4.2f %s ➖ %4.2f %s\n%4.2f %s ➖ %4.2f %s\n",
+                (double) 1, "\uD83C\uDDFA\uD83C\uDDF8", currencyConversionService.getConversionRatio(Currency.USD, Currency.BYN), "\uD83C\uDDE7\uD83C\uDDFE",
+                (double) 1, "\uD83C\uDDEA\uD83C\uDDFA", currencyConversionService.getConversionRatio(Currency.EUR, Currency.BYN), "\uD83C\uDDE7\uD83C\uDDFE",
+                (double) 100, "\uD83C\uDDF7\uD83C\uDDFA", currencyConversionService.getConversionRatio(Currency.RUB, Currency.BYN)*100, "\uD83C\uDDE7\uD83C\uDDFE");
+
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(message.getChatId());
+        sendMessage.setText(messageToSend);
+
+        try {
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void sendMessage(long chatId, String textToSend) {

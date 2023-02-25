@@ -52,5 +52,4 @@ public class CurrencyConversionServiceImp implements CurrencyConversionService {
         return rate / scale;
     }
 
-
 }
