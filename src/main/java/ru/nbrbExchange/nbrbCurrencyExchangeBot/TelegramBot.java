@@ -1,5 +1,7 @@
 package ru.nbrbExchange.nbrbCurrencyExchangeBot;
 
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -23,6 +25,11 @@ import ru.nbrbExchange.nbrbCurrencyExchangeBot.service.CurrencyConversionService
 import ru.nbrbExchange.nbrbCurrencyExchangeBot.service.SelectedCurrencyService;
 
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -90,6 +97,9 @@ public class TelegramBot extends TelegramLongPollingBot {
                     break;
                 case "/current_rates":
                     currentRates(message);
+                    break;
+                case "/test":
+                    test(message);
                     break;
                 default:
                     sendMessage(chatId, "Команда не поддерживается, список поддерживаемых команд находится в меню, справа от клавиатуры");
@@ -235,7 +245,45 @@ public class TelegramBot extends TelegramLongPollingBot {
     public String getBotToken() {
         return botConfig.getToken();
     }
+
+    // TODO ПОТОМ УБРАТЬ, это для теста гугл клауда
+    private void test(Message message) {
+        String textToSend = "";
+        int length = 0;
+
+        try {
+            URL url = new URL("https://catfact.ninja/fact");
+            HttpURLConnection con = (HttpURLConnection) url.openConnection();
+            con.setRequestMethod("GET");
+            BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+            String inputLine;
+            StringBuilder response = new StringBuilder();
+            while ((inputLine = in.readLine()) != null) {
+                response.append(inputLine);
+            }
+            in.close();
+            JSONObject json = new JSONObject(response.toString());
+            textToSend = json.getString("fact");
+            length = json.getInt("length");
+        } catch (IOException | JSONException e) {
+            throw new RuntimeException(e);
+        }
+
+        SendMessage messageToSend= new SendMessage();
+        messageToSend.setChatId(message.getChatId());
+        messageToSend.setText("fact: " + textToSend + "\nlength: " + length);
+
+        try {
+            execute(messageToSend);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
 }
+
+
 
 
 /////////////////////ТАК ВСТАВЛЯЮТСЯ КНОПКИ КЛАВИАТУРНЫЕ
